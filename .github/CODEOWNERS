@@ -1,0 +1,15 @@
+# CODEOWNERS file for CI/CD Template Repository
+# This file defines who owns and should review changes to different parts of the repository
+
+# Default owners for everything in the repo
+# These owners will be requested for review when someone opens a pull request
+* @WatcharawitAis @Ohmmy3847
+
+# GitHub Actions workflows - require review from DevOps/Platform team
+/.github/workflows/ @WatcharawitAis @Ohmmy3847
+
+# Documentation - can be reviewed by broader team
+*.md @WatcharawitAis @Ohmmy3847
+
+# Configuration files
+.gitignore @WatcharawitAis @Ohmmy3847
