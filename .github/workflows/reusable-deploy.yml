@@ -1,0 +1,394 @@
+name: Reusable Databricks Deploy Workflow
+
+# =============================================================================
+# REUSABLE WORKFLOW - CI/CD Template for Databricks Asset Bundles
+# =============================================================================
+# This workflow can be called from other repositories to standardize 
+# Databricks deployment across multiple projects.
+#
+# Usage: Other repos call this via:
+#   uses: username/data-platform-devops/.github/workflows/reusable-deploy.yml@main
+#
+# Features:
+#   - CI: Run tests (pytest) and linting (flake8, black)
+#   - Validate: Check Databricks bundle configuration
+#   - Deploy: Deploy to Databricks (dev/staging/prod)
+#   - Flexible: Enable/disable steps via parameters
+# =============================================================================
+
+on:
+  workflow_call:
+    # =========================================================================
+    # INPUT PARAMETERS
+    # =========================================================================
+    # These parameters can be passed from calling workflows to customize behavior
+    
+    inputs:
+      # --- Required Parameters ---
+      environment:
+        description: 'Target environment (dev, staging, prod)'
+        required: true
+        type: string
+      
+      # --- Databricks Configuration ---
+      databricks_bundle_target:
+        description: 'Databricks bundle target name (defaults to environment)'
+        required: false
+        type: string
+        default: ''  # If empty, uses 'environment' value
+      
+      working_directory:
+        description: 'Working directory containing databricks.yml'
+        required: false
+        type: string
+        default: '.'  # Root directory
+      
+      python_version:
+        description: 'Python version to use'
+        required: false
+        type: string
+        default: '3.10'
+      
+      # --- Deployment Control ---
+      run_tests:
+        description: 'Run tests after deployment (post-deployment validation)'
+        required: false
+        type: boolean
+        default: false
+      
+      validation_only:
+        description: 'Only validate without deploying (useful for PR checks)'
+        required: false
+        type: boolean
+        default: false
+      
+      # --- CI Testing Parameters ---
+      run_ci_tests:
+        description: 'Run pytest tests before deployment'
+        required: false
+        type: boolean
+        default: false
+      
+      run_linting:
+        description: 'Run code linting (flake8, black) before deployment'
+        required: false
+        type: boolean
+        default: false
+      
+      requirements_file:
+        description: 'Path to requirements file for CI tests'
+        required: false
+        type: string
+        default: 'requirements-dev.txt'
+      
+      test_path:
+        description: 'Path to test directory for pytest'
+        required: false
+        type: string
+        default: 'tests/'
+      
+      lint_path:
+        description: 'Path to code directory for linting'
+        required: false
+        type: string
+        default: 'pipeline/transformations/'
+      
+      coverage_source:
+        description: 'Source directory for coverage report'
+        required: false
+        type: string
+        default: 'pipeline'
+      
+      fail_on_lint_errors:
+        description: 'Fail workflow if linting errors are found'
+        required: false
+        type: boolean
+        default: true
+    
+    # =========================================================================
+    # SECRETS
+    # =========================================================================
+    # Sensitive values that must be configured in GitHub repository settings
+    # Path: Settings → Secrets and variables → Actions
+    
+    secrets:
+      DATABRICKS_HOST:
+        description: 'Databricks workspace URL (e.g., https://xxx.cloud.databricks.com)'
+        required: true
+      
+      DATABRICKS_TOKEN:
+        description: 'Databricks access token for authentication'
+        required: true
+      
+      SLACK_WEBHOOK_URL:
+        description: 'Slack webhook URL for notifications (optional)'
+        required: false
+    
+    # =========================================================================
+    # OUTPUTS
+    # =========================================================================
+    # Values that can be used by calling workflows
+    
+    outputs:
+      deployment_status:
+        description: 'Status of the deployment (success/failure)'
+        value: ${{ jobs.deploy.outputs.status }}
+
+# =============================================================================
+# JOBS
+# =============================================================================
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60  # Prevent hanging jobs
+    environment: ${{ inputs.environment }}  # Use GitHub environment for protection rules
+    outputs:
+      status: ${{ steps.set-status.outputs.status }}
+    
+    steps:
+      # -----------------------------------------------------------------------
+      # SETUP: Checkout code and configure Python
+      # -----------------------------------------------------------------------
+      
+      - name: Checkout calling repository
+        uses: actions/checkout@v4
+        # Checks out the repository that called this workflow
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
+          cache: 'pip'  # Cache pip packages for faster builds
+
+      # -----------------------------------------------------------------------
+      # CI STEP 1: Install Dependencies
+      # -----------------------------------------------------------------------
+      # Only runs if CI tests or linting are enabled
+      
+      - name: Cache pip dependencies
+        if: ${{ inputs.run_ci_tests || inputs.run_linting }}
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+        # Caches pip packages to speed up subsequent runs
+
+      - name: Install CI dependencies
+        if: ${{ inputs.run_ci_tests || inputs.run_linting }}
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          if [ -f "${{ inputs.requirements_file }}" ]; then
+            echo "📦 Installing dependencies from ${{ inputs.requirements_file }}"
+            pip install -r ${{ inputs.requirements_file }}
+          else
+            echo "⚠️ Warning: ${{ inputs.requirements_file }} not found"
+            if [ "${{ inputs.run_ci_tests }}" == "true" ] || [ "${{ inputs.run_linting }}" == "true" ]; then
+              echo "❌ Error: Dependencies required but requirements file not found"
+              exit 1
+            fi
+          fi
+        # Installs pytest, flake8, black, and other dev dependencies
+
+      # -----------------------------------------------------------------------
+      # CI STEP 2: Run Tests
+      # -----------------------------------------------------------------------
+      # Runs pytest with coverage reporting
+      
+      - name: Run pytest tests
+        if: ${{ inputs.run_ci_tests }}
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          if [ ! -d "${{ inputs.test_path }}" ]; then
+            echo "❌ Error: Test directory ${{ inputs.test_path }} not found"
+            exit 1
+          fi
+          
+          echo "🧪 Running tests in ${{ inputs.test_path }}"
+          pytest ${{ inputs.test_path }} \
+            -v \
+            --tb=short \
+            --cov=${{ inputs.coverage_source }} \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --junitxml=test-results.xml
+        # Flags:
+        #   -v: verbose output
+        #   --tb=short: shorter traceback
+        #   --cov: measure code coverage
+        #   --junitxml: generate test results XML
+
+      - name: Upload test results
+        if: ${{ inputs.run_ci_tests && always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ inputs.environment }}
+          path: |
+            ${{ inputs.working_directory }}/test-results.xml
+            ${{ inputs.working_directory }}/coverage.xml
+          retention-days: 30
+        # Saves test results for 30 days for later analysis
+
+      # -----------------------------------------------------------------------
+      # CI STEP 3: Run Linting
+      # -----------------------------------------------------------------------
+      # Checks code quality with flake8 and black
+      
+      - name: Run code linting
+        if: ${{ inputs.run_linting }}
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          if [ ! -d "${{ inputs.lint_path }}" ]; then
+            echo "❌ Error: Lint directory ${{ inputs.lint_path }} not found"
+            exit 1
+          fi
+          
+          echo "🔍 Running linting on ${{ inputs.lint_path }}"
+          LINT_FAILED=0
+          
+          # Run flake8 (code style checker)
+          if command -v flake8 &> /dev/null; then
+            echo "Running flake8..."
+            if ! flake8 ${{ inputs.lint_path }} --max-line-length=120 --statistics; then
+              echo "⚠️ Flake8 found issues"
+              LINT_FAILED=1
+            fi
+          else
+            echo "⚠️ Warning: flake8 not installed, skipping"
+          fi
+          
+          # Run black (code formatter checker)
+          if command -v black &> /dev/null; then
+            echo "Running black check..."
+            if ! black --check ${{ inputs.lint_path }}; then
+              echo "⚠️ Black found formatting issues"
+              LINT_FAILED=1
+            fi
+          else
+            echo "⚠️ Warning: black not installed, skipping"
+          fi
+          
+          # Fail if errors found and fail_on_lint_errors is true
+          if [ $LINT_FAILED -eq 1 ] && [ "${{ inputs.fail_on_lint_errors }}" == "true" ]; then
+            echo "❌ Linting failed"
+            exit 1
+          fi
+
+      # -----------------------------------------------------------------------
+      # DATABRICKS STEP 1: Setup CLI
+      # -----------------------------------------------------------------------
+      
+      - name: Setup Databricks CLI
+        uses: databricks/setup-cli@main
+        # Installs the official Databricks CLI
+
+      - name: Configure Databricks CLI
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          echo "[DEFAULT]" > ~/.databrickscfg
+          echo "host = $DATABRICKS_HOST" >> ~/.databrickscfg
+          echo "token = $DATABRICKS_TOKEN" >> ~/.databrickscfg
+          
+          # Verify configuration
+          databricks --version
+          echo "✅ Databricks CLI configured for: $DATABRICKS_HOST"
+        # Creates ~/.databrickscfg file with credentials
+        # GitHub automatically masks secrets in logs
+
+      # -----------------------------------------------------------------------
+      # DATABRICKS STEP 2: Determine Target Environment
+      # -----------------------------------------------------------------------
+      
+      - name: Set bundle target
+        id: set-target
+        run: |
+          if [ -n "${{ inputs.databricks_bundle_target }}" ]; then
+            echo "target=${{ inputs.databricks_bundle_target }}" >> $GITHUB_OUTPUT
+          else
+            echo "target=${{ inputs.environment }}" >> $GITHUB_OUTPUT
+          fi
+          echo "📦 Bundle target: ${{ steps.set-target.outputs.target || inputs.environment }}"
+        # Determines which target in databricks.yml to use
+        # If databricks_bundle_target is empty, uses environment name
+
+      # -----------------------------------------------------------------------
+      # DATABRICKS STEP 3: Validate Bundle
+      # -----------------------------------------------------------------------
+      
+      - name: Validate Databricks bundle
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          echo "🔍 Validating bundle for target: ${{ steps.set-target.outputs.target }}"
+          databricks bundle validate -t ${{ steps.set-target.outputs.target }}
+          echo "✅ Bundle validation passed"
+        # Checks databricks.yml syntax and configuration
+        # Validates permissions and resources exist
+        # ALWAYS runs (even if validation_only=true)
+
+      # -----------------------------------------------------------------------
+      # DATABRICKS STEP 4: Deploy Bundle
+      # -----------------------------------------------------------------------
+      # Only runs if validation_only=false
+      
+      - name: Deploy Databricks bundle
+        id: deploy
+        if: ${{ !inputs.validation_only }}
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          echo "🚀 Deploying bundle to ${{ inputs.environment }}"
+          databricks bundle deploy -t ${{ steps.set-target.outputs.target }}
+          echo "✅ Deployment completed successfully"
+        # Deploys jobs, pipelines, notebooks to Databricks
+        # Skipped if validation_only=true (for PR checks)
+
+      # -----------------------------------------------------------------------
+      # DATABRICKS STEP 5: Post-Deployment Tests (Optional)
+      # -----------------------------------------------------------------------
+      
+      - name: Run post-deployment tests
+        if: ${{ inputs.run_tests && !inputs.validation_only }}
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          echo "🧪 Running post-deployment tests"
+          if [ -f "scripts/run_tests.sh" ]; then
+            bash scripts/run_tests.sh ${{ steps.set-target.outputs.target }}
+          else
+            echo "⚠️ No test script found at scripts/run_tests.sh, skipping"
+          fi
+        # Runs integration tests after deployment
+        # Create scripts/run_tests.sh in your project to use this
+
+      # -----------------------------------------------------------------------
+      # FINALIZE: Set Status and Notify
+      # -----------------------------------------------------------------------
+      
+      - name: Set deployment status
+        id: set-status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+          fi
+        # Captures final job status for output
+
+      - name: Notify on success
+        if: success()
+        run: |
+          echo "✅ Deployment successful for ${{ inputs.environment }}"
+          echo "Target: ${{ steps.set-target.outputs.target }}"
+          echo "Validation only: ${{ inputs.validation_only }}"
+        # Success notification (can be extended with Slack/Teams)
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Deployment failed for ${{ inputs.environment }}"
+          echo "Check the logs above for details"
+        # Failure notification (can be extended with Slack/Teams)
