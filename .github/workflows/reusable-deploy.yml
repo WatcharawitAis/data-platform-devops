@@ -79,7 +79,7 @@ on:
         description: 'Path to requirements file for CI tests'
         required: false
         type: string
-        default: 'requirements-dev.txt'
+        default: 'requirements.txt'
       
       test_path:
         description: 'Path to test directory for pytest'
