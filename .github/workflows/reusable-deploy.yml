@@ -13,7 +13,7 @@ name: Reusable Databricks Deploy Workflow
 #   - CI: Run tests (pytest) and linting (flake8, black)
 #   - Validate: Check Databricks bundle configuration
 #   - Deploy: Deploy to Databricks (dev/staging/prod)
-#   - Flexible: Enable/disable steps via parameters
+#   - 
 # =============================================================================
 
 on:
@@ -91,13 +91,13 @@ on:
         description: 'Path to code directory for linting'
         required: false
         type: string
-        default: 'pipeline/transformations/'
+        default: 'src/'
       
       coverage_source:
         description: 'Source directory for coverage report'
         required: false
         type: string
-        default: 'pipeline'
+        default: 'src'
       
       fail_on_lint_errors:
         description: 'Fail workflow if linting errors are found'
