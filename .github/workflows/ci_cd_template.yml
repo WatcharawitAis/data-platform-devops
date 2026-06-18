@@ -33,7 +33,7 @@ jobs:
       - name: 'Checkout Calling Repository'
         uses: actions/checkout@v4
       - name: 'Install Databricks CLI'
-        uses: databricks/setup-cli@v1
+        uses: databricks/setup-cli@main
       - name: 'Validate Databricks Asset Bundle Config'
         run: |
           databricks bundle validate --target ${{ inputs.target_env }}
