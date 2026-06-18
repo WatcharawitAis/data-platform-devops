@@ -39,7 +39,8 @@ jobs:
           databricks bundle validate --target ${{ inputs.target_env }}
       - name: 'Install Python Dependencies'
         run: |
-          pip install -r requirements.txt pytest
+          
+          pip install -r requirements.txt
       - name: 'Run All Tests'
         run: |
           pytest tests/ -v
@@ -57,7 +58,7 @@ jobs:
       - name: 'Checkout Calling Repository'
         uses: actions/checkout@v4
       - name: 'Install Databricks CLI'
-        uses: databricks/setup-cli@v1
+        uses: databricks/setup-cli@main
       - name: 'Deploy Bundle'
         run: |
           databricks bundle deploy --target ${{ inputs.target_env }}
