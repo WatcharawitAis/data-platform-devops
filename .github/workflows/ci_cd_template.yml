@@ -23,27 +23,35 @@ on:
 jobs:
   # CI template
   ci:
-    name: Continuous Integration
+    name: Continuous Integration (Syntax & Lint)
     runs-on: ubuntu-latest
     env:
       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-      DATABRICKS_CLUSTER_ID: ${{ secrets.DATABRICKS_CLUSTER_ID }}
     steps:
       - name: 'Checkout Calling Repository'
         uses: actions/checkout@v4
+        
       - name: 'Install Databricks CLI'
         uses: databricks/setup-cli@main
+        
       - name: 'Validate Databricks Asset Bundle Config'
         run: |
           databricks bundle validate --target ${{ inputs.target_env }}
-      - name: 'Install Python Dependencies'
-        run: |
           
-          pip install -r requirements.txt
-      - name: 'Run Unit Test'
+      - name: 'Set up Python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          
+      - name: 'Install Ruff Linter'
         run: |
-          pytest tests/unit -v
+          pip install ruff
+          
+      - name: 'Check Code Syntax & Formatting'
+        run: |
+          ruff check .          
+          ruff format --check .
           
 
   cd:
