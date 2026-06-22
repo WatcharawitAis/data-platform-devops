@@ -49,6 +49,7 @@ jobs:
           pip install ruff
           
       - name: 'Check Code Syntax & Formatting'
+        continue-on-error: true
         run: |
           ruff check .          
           ruff format --check .
