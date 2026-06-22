@@ -84,7 +84,7 @@ jobs:
         # ดักไว้อีกชั้นเพื่อความชัวร์ ว่าจะไม่รันเทสบน Prod แน่นอน
         if: ${{ inputs.target_env != 'prod' }}
         run: |
-          databricks bundle run integration_test -t ${{ inputs.target_env }}
+          databricks bundle run test -t ${{ inputs.target_env }}
           
 
 
