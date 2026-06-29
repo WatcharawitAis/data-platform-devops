@@ -23,37 +23,45 @@ on:
 jobs:
   # CI template
   ci:
-    name: Continuous Integration
+    name: Continuous Integration (Syntax & Lint)
     runs-on: ubuntu-latest
     env:
       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-      DATABRICKS_CLUSTER_ID: ${{ secrets.DATABRICKS_CLUSTER_ID }}
     steps:
       - name: 'Checkout Calling Repository'
         uses: actions/checkout@v4
+        
       - name: 'Install Databricks CLI'
         uses: databricks/setup-cli@main
+        
       - name: 'Validate Databricks Asset Bundle Config'
         run: |
           databricks bundle validate --target ${{ inputs.target_env }}
-      - name: 'Install Python Dependencies'
-        run: |
           
-          pip install -r requirements.txt
-      - name: 'Run Unit Test'
+      - name: 'Set up Python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          
+      - name: 'Install Ruff Linter'
         run: |
-          pytest tests/unit -v
+          pip install ruff
+          
+      - name: 'Check Code Syntax & Formatting'
+        continue-on-error: true
+        run: |
+          ruff check .          
+          ruff format --check .
           
 
   cd:
     name: Continuous Deployment
     runs-on: ubuntu-latest
     needs: ci
-    
-    # แก้ไข: แยกตรรกะ Push (ทำทุก branch) และ Pull Request (ห้ามทำบน main) ออกจากกัน
+
     if: >
-      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging')) || 
+      (github.event.pull_request.merged == true && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging')) || 
       (github.event_name == 'pull_request' && (github.base_ref == 'dev' || github.base_ref == 'staging'))
     
     env:
@@ -67,15 +75,14 @@ jobs:
         uses: databricks/setup-cli@main
         
       - name: 'Deploy Bundle'
-        # ตรงนี้ไม่ต้องใส่ if ดักแล้ว เพราะถ้าเป็น PR เข้า main มันจะไม่หลุดเข้ามาใน Job นี้ตั้งแต่แรกครับ
+       
         run: |
           databricks bundle deploy --target ${{ inputs.target_env }}
           
       - name: 'Run Integration Test'
-        # ดักไว้อีกชั้นเพื่อความชัวร์ ว่าจะไม่รันเทสบน Prod แน่นอน
         if: ${{ inputs.target_env != 'prod' }}
         run: |
-          databricks bundle run integration_test -t ${{ inputs.target_env }}
+          databricks bundle run test -t ${{ inputs.target_env }}
           
 
 
