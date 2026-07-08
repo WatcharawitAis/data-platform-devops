@@ -34,6 +34,12 @@ jobs:
         
       - name: 'Install Databricks CLI'
         uses: databricks/setup-cli@main
+
+      - name: 'Install uv'
+        uses: astral-sh/setup-uv@v6
+
+      - name: Verify uv
+        run: uv --version
         
       - name: 'Validate Databricks Asset Bundle Config'
         run: |
