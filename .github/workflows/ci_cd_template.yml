@@ -44,15 +44,14 @@ jobs:
         with:
           python-version: '3.12'
           
-      - name: 'Install Ruff Linter'
+      - name: 'Install Pylint'
         run: |
           pip install ruff
           
       - name: 'Check Code Syntax & Formatting'
         continue-on-error: true
         run: |
-          ruff check .          
-          ruff format --check .
+          pylint .
           
 
   cd:
@@ -61,7 +60,7 @@ jobs:
     needs: ci
 
     if: >
-      (github.event.pull_request.merged == true && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging')) || 
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging')) || 
       (github.event_name == 'pull_request' && (github.base_ref == 'dev' || github.base_ref == 'staging'))
     
     env:
@@ -73,9 +72,14 @@ jobs:
         
       - name: 'Install Databricks CLI'
         uses: databricks/setup-cli@main
+
+      - name: 'Install uv'
+        uses: astral-sh/setup-uv@v6
+
+      - name: Verify uv
+        run: uv --version
         
-      - name: 'Deploy Bundle'
-       
+      - name: 'Deploy Bundle' 
         run: |
           databricks bundle deploy --target ${{ inputs.target_env }}
           
