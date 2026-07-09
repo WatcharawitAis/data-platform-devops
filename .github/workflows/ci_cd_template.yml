@@ -46,7 +46,7 @@ jobs:
           
       - name: 'Install Pylint'
         run: |
-          pip install ruff
+          pip install pylint
           
       - name: 'Check Code Syntax & Formatting'
         continue-on-error: true
