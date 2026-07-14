@@ -44,14 +44,14 @@ jobs:
         with:
           python-version: '3.12'
           
-      - name: 'Install Pylint'
+      - name: 'Install Ruff'
         run: |
           pip install pylint
           
       - name: 'Check Code Syntax & Formatting'
         continue-on-error: true
         run: |
-          pylint .
+          ruff check .
           
 
   cd:
