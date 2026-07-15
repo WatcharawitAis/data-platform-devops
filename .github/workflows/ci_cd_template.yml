@@ -16,9 +16,6 @@ on:
       DATABRICKS_TOKEN:
         description: 'Access Token For Databrick'
         required: true
-      DATABRICKS_CLUSTER_ID:
-        description: 'DATABRICKS_CLUSTER_ID'
-        required: false
         
 jobs:
   # CI template
@@ -46,10 +43,9 @@ jobs:
           
       - name: 'Install Ruff'
         run: |
-          pip install pylint
+          pip install ruff
           
       - name: 'Check Code Syntax & Formatting'
-        continue-on-error: true
         run: |
           ruff check .
           
@@ -87,6 +83,3 @@ jobs:
         if: ${{ inputs.target_env != 'prod' }}
         run: |
           databricks bundle run test -t ${{ inputs.target_env }}
-          
-
-
