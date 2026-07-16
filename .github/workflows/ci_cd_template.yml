@@ -47,7 +47,7 @@ jobs:
           
       - name: 'Check Code Syntax & Formatting'
         run: |
-          ruff check .
+          ruff check . --fix
           
 
   cd:
